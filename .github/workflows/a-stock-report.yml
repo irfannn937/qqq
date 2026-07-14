@@ -1,6 +1,9 @@
 name: A Stock Daily Report
 
 on:
+  push:
+    branches:
+      - main
   schedule:
     # 16:30 Asia/Shanghai = 08:30 UTC. Runs Monday-Friday.
     - cron: "30 8 * * 1-5"
