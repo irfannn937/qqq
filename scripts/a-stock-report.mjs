@@ -10,11 +10,11 @@ const date = new Intl.DateTimeFormat("en-CA", {
 }).format(new Date());
 
 const urls = {
-  idx: "http://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6&secids=1.000001,0.399001,0.399006,1.000688",
-  in: "http://push2.eastmoney.com/api/qt/clist/get?fid=f62&po=1&pz=10&pn=1&np=1&fltt=2&invt=2&fs=m:90+t:2+f:!50&fields=f12,f14,f2,f3,f62,f184",
-  out: "http://push2.eastmoney.com/api/qt/clist/get?fid=f62&po=0&pz=10&pn=1&np=1&fltt=2&invt=2&fs=m:90+t:2+f:!50&fields=f12,f14,f2,f3,f62,f184",
-  cin: "http://push2.eastmoney.com/api/qt/clist/get?fid=f62&po=1&pz=10&pn=1&np=1&fltt=2&invt=2&fs=m:90+t:3+f:!50&fields=f12,f14,f2,f3,f62,f184",
-  etf: "http://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=12&po=1&np=1&fltt=2&invt=2&fid=f6&fs=b:MK0021,b:MK0022,b:MK0023,b:MK0024&fields=f12,f14,f2,f3,f6,f5",
+  idx: "https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&invt=2&fields=f12,f14,f2,f3,f4,f5,f6&secids=1.000001,0.399001,0.399006,1.000688",
+  in: "https://push2.eastmoney.com/api/qt/clist/get?fid=f62&po=1&pz=10&pn=1&np=1&fltt=2&invt=2&fs=m:90+t:2+f:!50&fields=f12,f14,f2,f3,f62,f184",
+  out: "https://push2.eastmoney.com/api/qt/clist/get?fid=f62&po=0&pz=10&pn=1&np=1&fltt=2&invt=2&fs=m:90+t:2+f:!50&fields=f12,f14,f2,f3,f62,f184",
+  cin: "https://push2.eastmoney.com/api/qt/clist/get?fid=f62&po=1&pz=10&pn=1&np=1&fltt=2&invt=2&fs=m:90+t:3+f:!50&fields=f12,f14,f2,f3,f62,f184",
+  etf: "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=12&po=1&np=1&fltt=2&invt=2&fid=f6&fs=b:MK0021,b:MK0022,b:MK0023,b:MK0024&fields=f12,f14,f2,f3,f6,f5",
 };
 
 async function get(url) {
