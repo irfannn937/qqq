@@ -152,6 +152,110 @@ function impactLine(item) {
   return "中性观察：作为资金选择赛道时的外部变量跟踪";
 }
 
+const fundPools = [
+  {
+    match: /AI算力|半导体|PCB|通信|电子|芯片|光模块/i,
+    funds: [
+      ["512480", "半导体ETF", "弹性高，适合跟踪芯片/半导体主线强度"],
+      ["159995", "芯片ETF", "更偏芯片产业链，观察成交额是否持续放大"],
+      ["515880", "通信ETF", "受益于光模块、算力网络、运营商资本开支预期"],
+      ["515070", "人工智能AIETF", "适合观察AI应用和算力催化共振"],
+    ],
+  },
+  {
+    match: /新能源|电力设备|光伏|储能|锂电|汽车|机器人/i,
+    funds: [
+      ["515790", "光伏ETF", "适合跟踪光伏政策、价格和装机预期"],
+      ["515030", "新能源车ETF", "观察整车、锂电和智能驾驶是否共振"],
+      ["159806", "新能源车ETF", "同类方向备选，重点看成交活跃度"],
+      ["159819", "人工智能ETF", "若机器人/智能驾驶走强，可作为交叉方向观察"],
+    ],
+  },
+  {
+    match: /有色|周期|资源|铜|铝|锂|稀土|黄金|煤炭|石油|大宗/i,
+    funds: [
+      ["512400", "有色金属ETF", "适合跟踪工业金属价格和美元/汇率变化"],
+      ["159980", "有色ETF", "周期资源方向备选，关注量价配合"],
+      ["518880", "黄金ETF", "避险和实际利率变化时优先观察"],
+      ["159985", "豆粕ETF", "商品方向备选，波动较大，适合小仓位观察"],
+    ],
+  },
+  {
+    match: /医药|创新药|医疗|生物/i,
+    funds: [
+      ["159992", "创新药ETF", "适合跟踪创新药政策、出海和临床数据催化"],
+      ["512290", "生物医药ETF", "医药反弹时观察成交能否持续"],
+      ["159828", "医疗ETF", "更偏医疗服务/器械，关注政策扰动"],
+      ["515950", "医药龙头ETF", "偏龙头稳健方向，适合看持续性"],
+    ],
+  },
+  {
+    match: /军工|低空经济|航天|航空|卫星|无人机/i,
+    funds: [
+      ["512660", "军工ETF", "适合跟踪订单、装备周期和地缘事件催化"],
+      ["512670", "国防ETF", "军工方向备选，重点看资金持续性"],
+      ["159819", "人工智能ETF", "若低空经济叠加智能化，可作为交叉方向观察"],
+    ],
+  },
+  {
+    match: /计算机|软件|数据要素|信创|云计算|网络安全/i,
+    funds: [
+      ["159998", "计算机ETF", "适合跟踪信创、数据要素和AI应用扩散"],
+      ["515000", "科技ETF", "偏大科技综合方向，波动相对分散"],
+      ["515070", "人工智能AIETF", "AI应用催化增强时优先观察"],
+      ["159538", "信创ETF", "信创政策或订单催化时重点观察"],
+    ],
+  },
+  {
+    match: /金融|银行|证券|保险|地产|消费|白酒|食品|旅游/i,
+    funds: [
+      ["512880", "证券ETF", "风险偏好回升、成交额放大时优先观察"],
+      ["515020", "银行ETF华夏", "偏防守和红利方向，观察利率/政策变化"],
+      ["512690", "酒ETF", "消费修复和北向/机构回流时观察"],
+      ["159928", "消费ETF", "消费扩散行情中作为综合方向观察"],
+    ],
+  },
+];
+
+function buildFundWatchSection(inTrack, outTrack, inflow, concept, etf) {
+  const hotText = `${inTrack} ${names([...inflow, ...concept], 10)}`;
+  const candidates = fundPools
+    .filter((pool) => pool.match.test(hotText))
+    .flatMap((pool) => pool.funds);
+  const fallback = [
+    ["510300", "沪深300ETF", "市场偏强但主线不清时观察宽基"],
+    ["159915", "创业板ETF", "成长风格占优时观察"],
+    ["588000", "科创50ETF", "科技成长持续走强时观察"],
+  ];
+  const activeEtf = etf
+    .slice(0, 4)
+    .filter((x) => Number(x.f3) > 0)
+    .map((x) => [x.f12, x.f14, `今日ETF成交活跃，涨跌幅${pct(x.f3)}，成交${yi(x.f6)}`]);
+  const merged = [...activeEtf, ...(candidates.length ? candidates : fallback)];
+  const seen = new Set();
+  const picked = merged
+    .filter(([code]) => {
+      if (!code || seen.has(code)) return false;
+      seen.add(code);
+      return true;
+    })
+    .slice(0, 5);
+
+  const condition =
+    `未来三天只在“${inTrack}继续净流入、相关ETF成交额放大、指数不破短线支撑”时提高关注；` +
+    `若${outTrack}继续扩大流出或指数冲高回落，则观察池降级。`;
+
+  return [
+    "五、未来三天基金观察池",
+    `筛选逻辑：优先匹配今日资金流入赛道、ETF成交活跃度和外部事件催化。${condition}`,
+    ...picked.map(
+      ([code, name, reason], i) =>
+        `${i + 1}. ${name}（${code}）\n- 关注理由：${reason}\n- 触发条件：对应赛道连续净流入，且成交额不明显缩量。\n- 风险点：若板块一日游、冲高回落或出现利空新闻，不追高。`,
+    ),
+    "- 提示：这里只是观察池，不是买入指令；场内ETF波动较大，场外联接基金还会有申赎和净值确认延迟。",
+  ].join("\n");
+}
+
 async function buildEventSection(inTrack, outTrack, inflow, outflow, concept) {
   const inKeys = newsKeywords(inTrack, [...inflow, ...concept]);
   const outKeys = newsKeywords(outTrack, outflow);
@@ -289,6 +393,7 @@ const inTrack = track([...inflow, ...concept]);
 const outTrack = track(outflow);
 const positive = idx.filter((x) => Number(x.f3) > 0).length;
 const trend = positive >= 3 && Math.abs(inflow[0].f62) > 8e9 ? "震荡偏强" : positive <= 1 ? "偏弱" : "震荡";
+const fundWatchSection = buildFundWatchSection(inTrack, outTrack, inflow, concept, etf);
 const eventSection = await buildEventSection(inTrack, outTrack, inflow, outflow, concept);
 
 const report = `【A股资金动向简报｜${date}】
@@ -322,21 +427,23 @@ ${top(outflow)}
 - 今日偏弱方向：${names(outflow, 5)}。
 - ETF成交活跃：${etf.slice(0, 8).map((x) => `${x.f14}(${x.f12}) ${pct(x.f3)} 成交${yi(x.f6)}`).join("；")}。
 
+${fundWatchSection}
+
 ${eventSection}
 
-六、未来一周观察信号
+七、未来一周观察信号
 1. 成交额：若指数上涨但成交不能继续放大，反弹持续性需要打折。
 2. 主线资金：重点看${inTrack}能否连续净流入。
 3. 风格偏好：比较创业板、科创50、沪深300强弱。
 4. ETF方向：观察宽基ETF与行业ETF成交额是否同步放大。
 5. 外部变量：关注政策、汇率、海外科技股和大宗商品价格。
 
-七、仓位参考框架
+八、仓位参考框架
 - 激进条件：主线连续2-3日净流入，成交额维持高位，指数不破短线支撑。
 - 中性条件：指数上涨但资金每天快速换赛道，适合维持观察。
 - 防守条件：成交明显缩量、主要赛道净流出扩大、指数冲高回落，应控制追涨冲动。
 
-八、数据来源与提示
+九、数据来源与提示
 - 资金数据来源：东方财富行情/板块资金流公开接口。
 - 事件数据来源：Bing News RSS 自动抓取的公开新闻标题、摘要与出处链接。
 - 风险提示：公开资金流与新闻摘要存在口径差异和延迟，仅供个人观察，不构成投资建议。`;
