@@ -1,9 +1,11 @@
 import tls from "node:tls";
 
 const UA = "Mozilla/5.0";
-const REF = "http://quote.eastmoney.com/";
+const REF = "https://quote.eastmoney.com/";
+const TZ = "Asia/Shanghai";
+
 const date = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "Asia/Shanghai",
+  timeZone: TZ,
   year: "numeric",
   month: "2-digit",
   day: "2-digit",
@@ -17,26 +19,183 @@ const urls = {
   etf: "https://push2.eastmoney.com/api/qt/clist/get?pn=1&pz=12&po=1&np=1&fltt=2&invt=2&fid=f6&fs=b:MK0021,b:MK0022,b:MK0023,b:MK0024&fields=f12,f14,f2,f3,f6,f5",
 };
 
+const keywordGroups = [
+  {
+    name: "AI算力/半导体/PCB",
+    match: /半导体|芯片|集成电路|PCB|印制电路|电子元件|光模块|CPO|通信|算力|人工智能|AI|英伟达|NVIDIA/i,
+    news: ["半导体", "芯片", "PCB", "光模块", "人工智能", "英伟达"],
+  },
+  {
+    name: "新能源/电力设备",
+    match: /新能源|光伏|风电|储能|锂电|电池|电力设备|特高压|充电桩|汽车|机器人/i,
+    news: ["新能源", "光伏", "储能", "锂电池", "新能源汽车"],
+  },
+  {
+    name: "有色金属/周期资源",
+    match: /有色|铜|铝|锂|稀土|黄金|煤炭|石油|钢铁|化工|工业金属|小金属/i,
+    news: ["有色金属", "铜价", "黄金", "稀土", "大宗商品"],
+  },
+  {
+    name: "医药生物",
+    match: /医药|创新药|生物|医疗|CXO|疫苗|中药/i,
+    news: ["创新药", "医药", "医疗器械", "生物科技"],
+  },
+  {
+    name: "军工/低空经济",
+    match: /军工|航天|航空|卫星|低空经济|无人机/i,
+    news: ["军工", "低空经济", "无人机", "商业航天"],
+  },
+  {
+    name: "金融地产/消费",
+    match: /银行|证券|保险|房地产|白酒|消费|食品饮料|旅游|零售/i,
+    news: ["银行", "证券", "房地产", "消费", "白酒"],
+  },
+  {
+    name: "计算机/软件/数据要素",
+    match: /计算机|软件|数据要素|信创|云计算|网络安全|互联网/i,
+    news: ["数据要素", "信创", "云计算", "网络安全"],
+  },
+];
+
 async function get(url) {
   const r = await fetch(url, { headers: { "User-Agent": UA, Referer: REF } });
   if (!r.ok) throw new Error(`fetch ${r.status}: ${url}`);
   return (await r.json()).data?.diff || [];
 }
 
+async function getText(url) {
+  const r = await fetch(url, { headers: { "User-Agent": UA } });
+  if (!r.ok) throw new Error(`fetch ${r.status}: ${url}`);
+  return r.text();
+}
+
 const yi = (n) => `${(Number(n || 0) / 1e8).toFixed(2)}亿元`;
 const pct = (n) => `${Number(n || 0) >= 0 ? "+" : ""}${Number(n || 0).toFixed(2)}%`;
+const clean = (s = "") =>
+  s
+    .replace(/<!\[CDATA\[|\]\]>/g, "")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const top = (arr, n = 5) =>
-  arr.slice(0, n).map((x, i) => `${i + 1}. ${x.f14}：${yi(x.f62)}，涨跌幅${pct(x.f3)}`).join("\n");
+  arr
+    .slice(0, n)
+    .map((x, i) => `${i + 1}. ${x.f14}：${yi(x.f62)}，涨跌幅${pct(x.f3)}`)
+    .join("\n");
 const names = (arr, n = 5) => arr.slice(0, n).map((x) => x.f14).join("、");
 
 function track(arr) {
-  const s = names(arr, 3);
-  if (/元件|印制电路板|PCB|通信/.test(s)) return "PCB/电子元件、通信设备";
-  if (/有色|铜|铝|工业金属/.test(s)) return "有色金属/周期资源";
-  if (/半导体|芯片/.test(s)) return "半导体";
-  if (/军工/.test(s)) return "军工";
-  if (/医药|创新药/.test(s)) return "医药生物";
-  return arr[0]?.f14 || "暂无明确赛道";
+  const text = names(arr, 6);
+  const hit = keywordGroups.find((g) => g.match.test(text));
+  return hit?.name || arr[0]?.f14 || "暂无明确赛道";
+}
+
+function newsKeywords(trackName, boards) {
+  const text = `${trackName} ${names(boards, 10)}`;
+  const picked = keywordGroups.filter((g) => g.match.test(text)).flatMap((g) => g.news);
+  return [...new Set([...picked, ...boards.slice(0, 4).map((x) => x.f14)])].slice(0, 8);
+}
+
+function parseRss(xml, tag) {
+  return [...xml.matchAll(/<item\b[\s\S]*?<\/item>/gi)]
+    .map((m) => {
+      const item = m[0];
+      const read = (name) => clean(item.match(new RegExp(`<${name}[^>]*>([\\s\\S]*?)<\\/${name}>`, "i"))?.[1] || "");
+      return {
+        title: read("title"),
+        link: read("link"),
+        source: clean(item.match(/<source[^>]*>([\s\S]*?)<\/source>/i)?.[1] || tag),
+        date: read("pubDate"),
+        desc: read("description"),
+        tag,
+      };
+    })
+    .filter((x) => x.title && x.link);
+}
+
+async function bingNews(query, tag) {
+  const url = `https://www.bing.com/news/search?q=${encodeURIComponent(query)}&format=RSS&mkt=zh-CN`;
+  try {
+    return parseRss(await getText(url), tag);
+  } catch {
+    return [];
+  }
+}
+
+function scoreNews(item, keywords) {
+  const text = `${item.title} ${item.desc}`;
+  let score = 0;
+  for (const k of keywords) {
+    if (k && text.includes(k)) score += 3;
+  }
+  if (/政策|会议|监管|关税|制裁|订单|财报|指引|出口|进口|价格|涨价|降价|产能|禁令|美国|欧洲|日本|韩国|中东|美联储|汇率|利率|通胀/i.test(text)) {
+    score += 2;
+  }
+  if (/今天|今日|最新|发布|宣布|报道|称/i.test(text)) score += 1;
+  return score;
+}
+
+function impactLine(item) {
+  const text = `${item.title} ${item.desc}`;
+  if (/订单|涨价|需求|政策支持|补贴|突破|扩产|上调|创新高|增长|采购|投资/i.test(text)) {
+    return "偏利好：可能强化相关赛道景气预期或订单预期";
+  }
+  if (/制裁|禁令|调查|下调|亏损|降价|过剩|风险|冲突|关税|限制|召回/i.test(text)) {
+    return "偏利空/扰动：可能压制估值或加大短线波动";
+  }
+  return "中性观察：作为资金选择赛道时的外部变量跟踪";
+}
+
+async function buildEventSection(inTrack, outTrack, inflow, outflow, concept) {
+  const inKeys = newsKeywords(inTrack, [...inflow, ...concept]);
+  const outKeys = newsKeywords(outTrack, outflow);
+  const broadKeys = ["A股 政策", "美联储 利率", "人民币 汇率", "大宗商品", "AI 芯片 国际"];
+  const queries = [
+    `${inKeys.slice(0, 4).join(" OR ")} A股 赛道`,
+    `${outKeys.slice(0, 4).join(" OR ")} A股 资金`,
+    ...broadKeys,
+  ];
+
+  const results = (await Promise.all(queries.map((q) => bingNews(q, q)))).flat();
+  const seen = new Set();
+  const keywords = [...new Set([...inKeys, ...outKeys, "A股", "政策", "美联储", "汇率", "AI", "芯片"])];
+  const picked = results
+    .filter((item) => {
+      const key = item.title.replace(/\s+/g, "");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    })
+    .map((item) => ({ ...item, score: scoreNews(item, keywords) }))
+    .filter((item) => item.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, 6);
+
+  if (!picked.length) {
+    return [
+      "五、相关事件/新闻/报告跟踪",
+      "- 今日自动新闻源暂未抓到高相关条目，建议重点人工关注政策、汇率、美股科技股、大宗商品价格和相关产业订单变化。",
+    ].join("\n");
+  }
+
+  return [
+    "五、相关事件/新闻/报告跟踪",
+    ...picked.map((item, i) =>
+      [
+        `${i + 1}. ${item.title}`,
+        `- 摘要：${clean(item.desc).slice(0, 120) || "详见原文标题与出处。"}${item.desc.length > 120 ? "..." : ""}`,
+        `- 影响：${impactLine(item)}`,
+        `- 出处：${item.source} ${item.link}`,
+      ].join("\n"),
+    ),
+    "- 提示：新闻由公开 RSS/新闻搜索自动筛选，存在延迟、重复或口径差异；更适合作为赛道催化跟踪，不单独作为买卖依据。",
+  ].join("\n");
 }
 
 function b64(s) {
@@ -130,8 +289,9 @@ const inTrack = track([...inflow, ...concept]);
 const outTrack = track(outflow);
 const positive = idx.filter((x) => Number(x.f3) > 0).length;
 const trend = positive >= 3 && Math.abs(inflow[0].f62) > 8e9 ? "震荡偏强" : positive <= 1 ? "偏弱" : "震荡";
-const report = `【A股资金动向简报｜${date}】
+const eventSection = await buildEventSection(inTrack, outTrack, inflow, outflow, concept);
 
+const report = `【A股资金动向简报｜${date}】
 一句话结论：今日资金流入最大赛道为${inTrack}，流出最大赛道为${outTrack}；未来一周趋势判断为“${trend}”。
 
 一、核心结论
@@ -162,22 +322,24 @@ ${top(outflow)}
 - 今日偏弱方向：${names(outflow, 5)}。
 - ETF成交活跃：${etf.slice(0, 8).map((x) => `${x.f14}(${x.f12}) ${pct(x.f3)} 成交${yi(x.f6)}`).join("；")}。
 
-五、未来一周观察信号
+${eventSection}
+
+六、未来一周观察信号
 1. 成交额：若指数上涨但成交不能继续放大，反弹持续性需要打折。
 2. 主线资金：重点看${inTrack}能否连续净流入。
 3. 风格偏好：比较创业板、科创50、沪深300强弱。
 4. ETF方向：观察宽基ETF与行业ETF成交额是否同步放大。
 5. 外部变量：关注政策、汇率、海外科技股和大宗商品价格。
 
-六、仓位参考框架
+七、仓位参考框架
 - 激进条件：主线连续2-3日净流入，成交额维持高位，指数不破短线支撑。
 - 中性条件：指数上涨但资金每天快速换赛道，适合维持观察。
 - 防守条件：成交明显缩量、主要赛道净流出扩大、指数冲高回落，应控制追涨冲动。
 
-七、数据来源与提示
-- 数据来源：东方财富行情/板块资金流公开接口。
-- 风险提示：公开资金流数据存在口径差异，仅供个人观察，不构成投资建议。
-`;
+八、数据来源与提示
+- 资金数据来源：东方财富行情/板块资金流公开接口。
+- 事件数据来源：Bing News RSS 自动抓取的公开新闻标题、摘要与出处链接。
+- 风险提示：公开资金流与新闻摘要存在口径差异和延迟，仅供个人观察，不构成投资建议。`;
 
 await mail(`A股资金动向简报｜${date}`, report);
 console.log(`sent ${date}`);
